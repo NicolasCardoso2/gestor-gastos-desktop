@@ -11,23 +11,42 @@
     
     <!-- =================(TABELA DE BOLETOS)================= -->
     <div class="boletos-table-container">
-      <h2>Boletos do Dia</h2>
-      <div class="current-date-indicator" id="current-date-indicator"></div>
-      <table id="boletos-table" class="boletos-table">
-        <thead>
-          <tr><th>Status</th><th>Nome</th><th>Valor</th></tr>
-        </thead>
-        <tbody><!-- Preenchido via JS --></tbody>
-        <tfoot>
-          <tr><td></td><td><strong>Total</strong></td><td id="boletos-total">R$ 0,00</td></tr>
-        </tfoot>
-      </table>
+      <div class="boletos-sidebar-header">
+        <h2>Boletos do Dia</h2>
+        <div class="current-date-indicator" id="current-date-indicator"></div>
+      </div>
+      <div class="boletos-sidebar-body">
+        <table id="boletos-table" class="boletos-table">
+          <thead>
+            <tr><th></th><th>Boleto</th><th>Valor</th></tr>
+          </thead>
+          <tbody><!-- Preenchido via JS --></tbody>
+          <tfoot>
+            <tr><td></td><td><strong>Total</strong></td><td id="boletos-total">R$ 0,00</td></tr>
+          </tfoot>
+        </table>
 
-      
-      <!-- =================(NAVEGAÇÃO)================= -->
-      <div class="navigation-bar">
-        <button id="nav-calendar" class="nav-tab active">Calendário</button>
-        <button id="nav-report" class="nav-tab">Relatório Mensal</button>
+        <!-- =================(DASHBOARD MENSAL)================= -->
+        <div id="month-dashboard" class="month-dashboard">
+          <div class="dash-card dash-pago">
+            <span class="dash-label">Pago</span>
+            <span class="dash-value" id="dash-pago">R$ 0,00</span>
+          </div>
+          <div class="dash-card dash-pendente">
+            <span class="dash-label">Pendente</span>
+            <span class="dash-value" id="dash-pendente">R$ 0,00</span>
+          </div>
+          <div class="dash-card dash-vencido">
+            <span class="dash-label">Vencido</span>
+            <span class="dash-value" id="dash-vencido">R$ 0,00</span>
+          </div>
+        </div>
+
+        <!-- =================(NAVEGAÇÃO)================= -->
+        <div class="navigation-bar">
+          <button id="nav-calendar" class="nav-tab active">Calendário</button>
+          <button id="nav-report" class="nav-tab">Relatório Mensal</button>
+        </div>
       </div>
     </div>
 
@@ -126,6 +145,7 @@
     <div class="modal-content">
       <span id="close-modal" class="close">&times;</span>
       <h2 id="modal-date"></h2>
+      <div id="modal-summary" class="modal-summary"></div>
       <div class="boletos-header">
         <h3>Boletos cadastrados:</h3>
         <div class="boletos-buttons">
@@ -135,14 +155,23 @@
         </div>
       </div>
       <div class="boletos-list-block">
+        <div class="list-controls">
+          <input type="text" id="modal-search" placeholder="🔍 Buscar boleto..." class="modal-search-input">
+          <select id="modal-sort" class="modal-sort-select">
+            <option value="default">Padrão</option>
+            <option value="nome">Nome A-Z</option>
+            <option value="valor-asc">Menor valor</option>
+            <option value="valor-desc" selected>Maior valor</option>
+            <option value="status">Status</option>
+          </select>
+        </div>
         <div class="boletos-list-scroll">
           <ul id="modal-boletos-list"></ul>
         </div>
       </div>
-    </div>
 
-    <!-- =================(FORMULÁRIO MODAL)================= -->
-    <form id="add-boleto-form" style="display:none; margin-top:16px;">
+      <!-- =================(FORMULÁRIO MODAL)================= -->
+      <form id="add-boleto-form" style="display:none; margin-top:16px;">
       <table class="boleto-form-table">
         <tr>
           <td><label for="modal-boleto-type">Tipo de boleto:</label></td>
@@ -163,7 +192,12 @@
         </tr>
         <tr>
           <td><label for="modal-boleto-valor">Valor:</label></td>
-          <td><input type="number" id="modal-boleto-valor" required step="0.01"></td>
+          <td>
+            <div class="valor-input-wrapper">
+              <span class="valor-prefix">R$</span>
+              <input type="text" id="modal-boleto-valor" required placeholder="0,00" inputmode="decimal" autocomplete="off">
+            </div>
+          </td>
         </tr>
         <tr>
           <td><label for="modal-boleto-obs">Observações:</label></td>
@@ -197,7 +231,8 @@
           </td>
         </tr>
       </table>
-    </form>
+      </form>
+    </div>
   </div>
 
   <!-- =================(BOTÕES FLUTUANTES)================= -->
@@ -251,6 +286,30 @@
           <p>Sistema de gestão financeira pessoal</p>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- =================(MODAL ALERTAS)================= -->
+  <div id="alert-modal" class="modal" style="display:none;">
+    <div class="modal-content alert-modal-content">
+      <span id="close-alert-modal" class="close">&times;</span>
+      <div class="alert-modal-header">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 20h20L12 2z" fill="#fff8e1" stroke="#f57f17" stroke-width="1.5" stroke-linejoin="round"/>
+          <line x1="12" y1="9" x2="12" y2="14" stroke="#f57f17" stroke-width="1.8" stroke-linecap="round"/>
+          <circle cx="12" cy="17" r="0.8" fill="#f57f17"/>
+        </svg>
+        <h2>Atenção</h2>
+      </div>
+      <div id="alert-section-hoje" class="alert-section" style="display:none;">
+        <div class="alert-section-title alert-hoje-title">Vencem hoje</div>
+        <ul id="alert-list-hoje" class="alert-list"></ul>
+      </div>
+      <div id="alert-section-vencidos" class="alert-section" style="display:none;">
+        <div class="alert-section-title alert-vencidos-title">Vencidos não pagos</div>
+        <ul id="alert-list-vencidos" class="alert-list"></ul>
+      </div>
+      <button id="close-alert-btn" class="btn alert-ok-btn">Entendido</button>
     </div>
   </div>
 

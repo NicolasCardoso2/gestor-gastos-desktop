@@ -312,6 +312,16 @@ function registerIpcHandlers() {
     Object.entries(backupHandlers).forEach(([channel, handler]) => {
         ipcMain.handle(channel, handler);
     });
+
+    // Handler temporário para screenshots do README
+    ipcMain.handle('take-screenshot', async (event, filename) => {
+        const win = BrowserWindow.getAllWindows()[0];
+        if (!win) return { success: false };
+        const image = await win.webContents.capturePage();
+        const savePath = path.join(__dirname, 'docs', filename);
+        fs.writeFileSync(savePath, image.toPNG());
+        return { success: true, path: savePath };
+    });
 }
 
 /* =================(INICIALIZAÇÃO DO APP)================= */

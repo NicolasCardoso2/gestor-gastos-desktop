@@ -1,21 +1,30 @@
 # Node / Electron
 node_modules/
 dist/
-build/
+out/
 
-# Local data / logs
-database.db
+# Build gerado (ícones criados pelo script generate-icons.js)
+build/icon.ico
+build/icon.png
+assets/*.ico
+
+# Banco de dados local
+*.db
+*.sqlite
+
+# Logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# OS junk
+# Variáveis de ambiente
+.env
+.env.*
+
+# OS
 .DS_Store
 Thumbs.db
 
 # Editor
 .vscode/
-
-# Assets generated
-assets/*.ico

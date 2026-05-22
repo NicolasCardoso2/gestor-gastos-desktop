@@ -4,6 +4,7 @@ const $$ = (sel, root = document) => root.querySelectorAll(sel);
 const byId = (id) => document.getElementById(id);
 
 const elements = {
+  boletosTable: byId('boletos-table'),
   boletosTableBody: $('#boletos-table tbody'),
   boletosTotal: byId('boletos-total'),
   calendarScreen: byId('calendar-screen'),
@@ -19,6 +20,9 @@ const elements = {
   boletosModal: byId('boletos-modal'),
   closeModalBtn: byId('close-modal'),
   modalDate: byId('modal-date'),
+  modalSummary: byId('modal-summary'),
+  modalSearch: byId('modal-search'),
+  modalSortSelect: byId('modal-sort'),
   modalBoletosList: byId('modal-boletos-list'),
   addBoletoBtn: byId('add-boleto-btn'),
   editarBoletoBtn: byId('editar-boleto-btn'),
@@ -47,7 +51,15 @@ const elements = {
   categoryChart: byId('category-chart'),
   chartLegend: byId('chart-legend'),
 
+  // Elementos do dashboard
+  dashPago: byId('dash-pago'),
+  dashPendente: byId('dash-pendente'),
+  dashVencido: byId('dash-vencido'),
 
+  // Elementos do modal de alertas
+  alertModal: byId('alert-modal'),
+  closeAlertModal: byId('close-alert-modal'),
+  closeAlertBtn: byId('close-alert-btn'),
 
   // Elementos de configurações
   settingsBtn: byId('settings-btn'),
@@ -74,7 +86,9 @@ let state = {
   isEditing: false,
   currentMonth: now.getMonth(),
   currentYear: now.getFullYear(),
-  expenses: JSON.parse(localStorage.getItem('expenses')) || {}
+  expenses: JSON.parse(localStorage.getItem('expenses')) || {},
+  modalSearch: '',
+  modalSort: 'valor-desc'
 };
 
 /* =================(UTILITÁRIOS)================= */
@@ -93,12 +107,32 @@ const utils = {
 
   formatCurrency: (value) => `R$ ${parseFloat(value || 0).toFixed(2)}`,
 
-  getDaysInMonth: (month, year) => new Date(year, month + 1, 0).getDate()
+  getDaysInMonth: (month, year) => new Date(year, month + 1, 0).getDate(),
+
+  getCategoryIcon: (tipo) => {
+    const map = {
+      'luz':        '💡',
+      'água':       '💧',
+      'agua':       '💧',
+      'internet':   '🌐',
+      'telefone':   '📱',
+      'aluguel':    '🏠',
+      'cartão':     '💳',
+      'cartao':     '💳',
+      'imposto':    '🏛️',
+      'contadora':  '📊',
+      'outros':     '📄',
+    };
+    return map[(tipo || '').toLowerCase().trim()] || '📋';
+  }
 };
 
 /* =================(GERENCIAMENTO DE ESTADO)================= */
 const stateManager = {
-  saveExpenses: () => localStorage.setItem('expenses', JSON.stringify(state.expenses)),
+  saveExpenses: () => {
+    localStorage.setItem('expenses', JSON.stringify(state.expenses));
+    dashboardManager.update();
+  },
 
   updateExpenses: (date, newExpenses) => {
     if (!newExpenses.length) delete state.expenses[date];
@@ -146,7 +180,12 @@ const calendarManager = {
     if (type !== 'normal') return dayEl;
 
     const dateStr = utils.formatDate(new Date(state.currentYear, state.currentMonth, day));
-    dayEl.textContent = day;
+
+    const numSpan = document.createElement('span');
+    numSpan.className = 'day-number';
+    numSpan.textContent = day;
+    dayEl.appendChild(numSpan);
+
     dayEl.addEventListener('click', () => modalManager.openDetails(day));
 
     // Otimizar hover para evitar flicker - só atualizar se data for diferente
@@ -175,6 +214,10 @@ const calendarManager = {
     if (count > 0) {
       dayEl.classList.add('has-boletos');
       dayEl.title = `${count} boleto(s) cadastrado(s)`;
+      const badge = document.createElement('span');
+      badge.className = 'day-badge';
+      badge.textContent = count;
+      dayEl.appendChild(badge);
     }
 
     return dayEl;
@@ -206,10 +249,24 @@ const tableManager = {
     tableManager.updateDateIndicator(targetDate);
 
     if (!expenses.length) {
-      elements.boletosTableBody.innerHTML = '<tr><td colspan="3">Nenhum boleto</td></tr>';
+      elements.boletosTable.classList.add('table-empty');
+      elements.boletosTableBody.innerHTML = `
+        <tr><td colspan="3">
+          <div class="empty-state">
+            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="12" y="8" width="40" height="48" rx="4" fill="#e8f5e9" stroke="#a5d6a7" stroke-width="2"/>
+              <line x1="20" y1="22" x2="44" y2="22" stroke="#a5d6a7" stroke-width="2" stroke-linecap="round"/>
+              <line x1="20" y1="30" x2="44" y2="30" stroke="#a5d6a7" stroke-width="2" stroke-linecap="round"/>
+              <line x1="20" y1="38" x2="34" y2="38" stroke="#a5d6a7" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span class="empty-state-title">Nenhum boleto</span>
+            <span class="empty-state-sub">Clique em um dia para adicionar</span>
+          </div>
+        </td></tr>`;
       elements.boletosTotal.textContent = utils.formatCurrency(0);
       return;
     }
+    elements.boletosTable.classList.remove('table-empty');
 
     const currentDate = new Date();
     const targetDateObj = utils.parseDate(targetDate);
@@ -249,7 +306,11 @@ const tableManager = {
       checkboxCell.appendChild(checkbox);
       
       const nomeCell = document.createElement('td');
-      nomeCell.textContent = item.nome || '';
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'category-icon';
+      iconSpan.textContent = utils.getCategoryIcon(item.tipo);
+      nomeCell.appendChild(iconSpan);
+      nomeCell.appendChild(document.createTextNode(' ' + (item.nome || '')));
       
       const valorCell = document.createElement('td');
       valorCell.textContent = utils.formatCurrency(item.valor);
@@ -288,6 +349,98 @@ const tableManager = {
   }
 };
 
+/* =================(ALERTAS DE BOLETOS)================= */
+const alertManager = {
+  check: () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = utils.formatDate(today);
+
+    const hoje = [];
+    const vencidos = [];
+
+    for (const [dateStr, expenses] of Object.entries(state.expenses)) {
+      const parts = dateStr.split('/');
+      const m = parseInt(parts[0], 10);
+      const d = parseInt(parts[1], 10);
+      const y = parseInt(parts[2], 10);
+      const dateObj = new Date(y, m - 1, d);
+
+      for (const item of expenses) {
+        if (item.pago) continue;
+        if (dateStr === todayStr) {
+          hoje.push({ ...item, dateStr });
+        } else if (dateObj < today) {
+          vencidos.push({ ...item, dateStr });
+        }
+      }
+    }
+
+    if (!hoje.length && !vencidos.length) return;
+
+    const sectionHoje = byId('alert-section-hoje');
+    const listHoje = byId('alert-list-hoje');
+    if (hoje.length && sectionHoje && listHoje) {
+      listHoje.innerHTML = hoje.map(b =>
+        `<li><span class="alert-nome">${b.nome || b.tipo || 'Boleto'}</span><span class="alert-valor">${utils.formatCurrency(b.valor)}</span></li>`
+      ).join('');
+      sectionHoje.style.display = '';
+    }
+
+    const sectionVencidos = byId('alert-section-vencidos');
+    const listVencidos = byId('alert-list-vencidos');
+    if (vencidos.length && sectionVencidos && listVencidos) {
+      listVencidos.innerHTML = vencidos.map(b => {
+        const [bm, bd, by] = b.dateStr.split('/');
+        return `<li><span class="alert-nome">${b.nome || b.tipo || 'Boleto'}</span><span class="alert-data">${bd}/${bm}/${by}</span><span class="alert-valor">${utils.formatCurrency(b.valor)}</span></li>`;
+      }).join('');
+      sectionVencidos.style.display = '';
+    }
+
+    if (elements.alertModal) elements.alertModal.style.display = 'flex';
+  },
+
+  close: () => {
+    if (elements.alertModal) elements.alertModal.style.display = 'none';
+  }
+};
+
+/* =================(DASHBOARD MENSAL)================= */
+const dashboardManager = {
+  update: () => {
+    const { currentMonth, currentYear } = state;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let pago = 0, pendente = 0, vencido = 0;
+
+    for (const [dateStr, expenses] of Object.entries(state.expenses)) {
+      const parts = dateStr.split('/');
+      const m = parseInt(parts[0], 10);
+      const d = parseInt(parts[1], 10);
+      const y = parseInt(parts[2], 10);
+      if (m - 1 !== currentMonth || y !== currentYear) continue;
+
+      const dateObj = new Date(y, m - 1, d);
+
+      for (const item of expenses) {
+        const valor = parseFloat(item.valor || 0);
+        if (item.pago) {
+          pago += valor;
+        } else if (dateObj < today) {
+          vencido += valor;
+        } else {
+          pendente += valor;
+        }
+      }
+    }
+
+    if (elements.dashPago)     elements.dashPago.textContent     = utils.formatCurrency(pago);
+    if (elements.dashPendente) elements.dashPendente.textContent = utils.formatCurrency(pendente);
+    if (elements.dashVencido)  elements.dashVencido.textContent  = utils.formatCurrency(vencido);
+  }
+};
+
 /* =================(GERENCIAMENTO DO MODAL)================= */
 const modalManager = {
   openDetails: (day) => {
@@ -297,6 +450,8 @@ const modalManager = {
 
   showBoletosModal: (dateStr, day) => {
     state.selectedDate = dateStr;
+    state.modalSearch = '';
+    if (elements.modalSearch) elements.modalSearch.value = '';
     elements.modalDate.textContent = `Dia ${day} de ${config.monthNames[state.currentMonth]} de ${state.currentYear}`;
     modalManager.updateBoletosList(dateStr);
     elements.boletosModal.style.display = 'flex';
@@ -305,17 +460,56 @@ const modalManager = {
   },
 
   updateBoletosList: (dateStr) => {
-    const list = state.expenses[dateStr] || [];
+    const rawList = state.expenses[dateStr] || [];
     elements.modalBoletosList.innerHTML = '';
 
-    if (!list.length) {
+    // Atualizar totalizador
+    if (elements.modalSummary) {
+      if (rawList.length) {
+        const total = rawList.reduce((s, b) => s + parseFloat(b.valor || 0), 0);
+        const pagos = rawList.filter(b => b.pago).length;
+        elements.modalSummary.textContent = `${rawList.length} boleto${rawList.length > 1 ? 's' : ''} · ${utils.formatCurrency(total)}${pagos ? ` · ${pagos} pago${pagos > 1 ? 's' : ''}` : ''}`;
+        elements.modalSummary.style.display = '';
+      } else {
+        elements.modalSummary.style.display = 'none';
+      }
+    }
+
+    if (!rawList.length) {
       elements.modalBoletosList.innerHTML = '<li>Nenhum boleto cadastrado.</li>';
       elements.editarBoletoBtn.disabled = elements.deletarBoletoBtn.disabled = true;
       return;
     }
 
+    // Filtrar
+    const query = utils.normalizeString(state.modalSearch);
+    let list = rawList.map((item, idx) => ({ item, idx }));
+    if (query) {
+      list = list.filter(({ item }) =>
+        utils.normalizeString(item.nome).includes(query) ||
+        utils.normalizeString(item.tipo).includes(query)
+      );
+    }
+
+    // Ordenar
+    const sort = state.modalSort;
+    if (sort === 'nome') {
+      list.sort((a, b) => utils.normalizeString(a.item.nome).localeCompare(utils.normalizeString(b.item.nome)));
+    } else if (sort === 'valor-asc') {
+      list.sort((a, b) => parseFloat(a.item.valor || 0) - parseFloat(b.item.valor || 0));
+    } else if (sort === 'valor-desc') {
+      list.sort((a, b) => parseFloat(b.item.valor || 0) - parseFloat(a.item.valor || 0));
+    } else if (sort === 'status') {
+      list.sort((a, b) => (b.item.pago ? 1 : 0) - (a.item.pago ? 1 : 0));
+    }
+
+    if (!list.length) {
+      elements.modalBoletosList.innerHTML = '<li style="color:#aaa;padding:10px;">Nenhum resultado encontrado.</li>';
+      return;
+    }
+
     const frag = document.createDocumentFragment();
-    list.forEach((item, idx) => frag.appendChild(modalManager.createBoletoListItem(item, idx)));
+    list.forEach(({ item, idx }) => frag.appendChild(modalManager.createBoletoListItem(item, idx)));
     elements.modalBoletosList.appendChild(frag);
   },
 
@@ -361,7 +555,7 @@ const modalManager = {
     const contentContainer = document.createElement('div');
     contentContainer.className = 'boleto-content';
     contentContainer.innerHTML = `
-            <strong>${item.tipo || ''}</strong>${item.nome || ''} 
+            <strong>${utils.getCategoryIcon(item.tipo)} ${item.tipo || ''}</strong>${item.nome ? ' — ' + item.nome : ''}
             <span>${utils.formatCurrency(item.valor)}</span>
             ${extraInfo.length ? `<small>${extraInfo.join(' • ')}</small>` : ''}
         `;
@@ -432,7 +626,7 @@ const formManager = {
 
     elements.modalBoletoType.value = boleto.tipo || '';
     elements.modalBoletoNome.value = boleto.nome || '';
-    elements.modalBoletoValor.value = boleto.valor || '';
+    elements.modalBoletoValor.value = boleto.valor ? Number(boleto.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
     elements.modalBoletoObs.value = boleto.obs || '';
     elements.modalBoletoRepeticao.value = boleto.repeticao || 'unica';
 
@@ -459,7 +653,7 @@ const formManager = {
     const formData = {
       tipo: elements.modalBoletoType.value.trim(),
       nome: elements.modalBoletoNome.value.trim(),
-      valor: parseFloat(elements.modalBoletoValor.value),
+      valor: parseFloat((elements.modalBoletoValor.value || '').replace(/\./g, '').replace(',', '.')) || 0,
       obs: elements.modalBoletoObs.value.trim(),
       repeticao,
       meses: repeticao === 'mensal' ? parseInt(elements.modalBoletoMeses.value || '0', 10) : 0,
@@ -482,12 +676,24 @@ const formManager = {
   },
 
   validateForm: ({ tipo, nome, valor, repeticao, meses }) => {
-    if (!tipo || !nome || isNaN(valor) || valor <= 0) {
-      alert('Preencha todos os campos obrigatórios corretamente!');
+    if (!tipo) {
+      settingsManager.showToast('Selecione o tipo de boleto.', 'error');
+      elements.modalBoletoType?.focus();
+      return false;
+    }
+    if (!nome) {
+      settingsManager.showToast('Informe o nome do boleto.', 'error');
+      elements.modalBoletoNome?.focus();
+      return false;
+    }
+    if (isNaN(valor) || valor <= 0) {
+      settingsManager.showToast('Informe um valor válido maior que zero.', 'error');
+      elements.modalBoletoValor?.focus();
       return false;
     }
     if (repeticao === 'mensal' && (!meses || meses < 1)) {
-      alert('Informe a quantidade de meses para repetir.');
+      settingsManager.showToast('Informe a quantidade de meses para repetir.', 'error');
+      elements.modalBoletoMeses?.focus();
       return false;
     }
     return true;
@@ -865,6 +1071,20 @@ const init = {
 
     elements.closeModalBtn.addEventListener('click', modalManager.closeModal);
 
+    if (elements.modalSearch) {
+      elements.modalSearch.addEventListener('input', () => {
+        state.modalSearch = elements.modalSearch.value;
+        modalManager.updateBoletosList(state.selectedDate);
+      });
+    }
+
+    if (elements.modalSortSelect) {
+      elements.modalSortSelect.addEventListener('change', () => {
+        state.modalSort = elements.modalSortSelect.value;
+        modalManager.updateBoletosList(state.selectedDate);
+      });
+    }
+
     elements.addBoletoBtn.addEventListener('click', () => {
       formManager.resetFormState();
 
@@ -903,7 +1123,15 @@ const init = {
       });
     }
 
-
+    if (elements.modalBoletoValor) {
+      elements.modalBoletoValor.addEventListener('input', () => {
+        const input = elements.modalBoletoValor;
+        const raw = input.value.replace(/\D/g, '');
+        if (!raw) { input.value = ''; return; }
+        const num = parseInt(raw, 10);
+        input.value = (num / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      });
+    }
 
     elements.navCalendar.addEventListener('click', navigationManager.switchToCalendar);
     elements.navReport.addEventListener('click', navigationManager.switchToReport);
@@ -924,12 +1152,22 @@ const init = {
     elements.settingsModal.addEventListener('click', (e) => {
       if (e.target === elements.settingsModal) settingsManager.closeModal();
     });
+
+    if (elements.closeAlertModal) elements.closeAlertModal.addEventListener('click', alertManager.close);
+    if (elements.closeAlertBtn)   elements.closeAlertBtn.addEventListener('click', alertManager.close);
+    if (elements.alertModal) {
+      elements.alertModal.addEventListener('click', (e) => {
+        if (e.target === elements.alertModal) alertManager.close();
+      });
+    }
   },
 
   initialize: () => {
     calendarManager.createCalendar();
     tableManager.updateBoletosTable();
     reportManager.initializeReport();
+    dashboardManager.update();
+    alertManager.check();
 
     init.setupEventListeners();
   }

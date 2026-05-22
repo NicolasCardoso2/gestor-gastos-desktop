@@ -26,5 +26,10 @@ contextBridge.exposeInMainWorld('api', {
     create: () => ipcRenderer.invoke('create-backup'),
     import: () => ipcRenderer.invoke('import-database'),
     export: () => ipcRenderer.invoke('export-database')
+  },
+
+  /* =================(SCREENSHOT - README)================= */
+  screenshot: {
+    capture: (filename) => ipcRenderer.invoke('take-screenshot', filename)
   }
 });
