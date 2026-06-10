@@ -1,6 +1,6 @@
 <div align="center">
 
-# Gestor de Gastos Desktop
+# Gestão Financeira Desktop
 
 **Controle financeiro pessoal com calendário interativo, relatórios e backup automático.**
 
@@ -37,7 +37,7 @@
 ### Backup e Segurança
 - Backup manual com um clique
 - Importação de backups anteriores
-- Banco de dados criado automaticamente em `%APPDATA%/Gestor de Gastos/database.db`
+- Banco de dados criado automaticamente em `%APPDATA%/Gestão Financeira Desktop/database.db`
 
 ---
 
@@ -46,8 +46,8 @@
 Você precisa ter o **Node.js 18 ou superior** instalado.
 
 ```bash
-git clone https://github.com/NicolasCardoso2/gestor-gastos-desktop.git
-cd gestor-gastos-desktop
+git clone https://github.com/NicolasCardoso2/gestao-financeira-desktop.git
+cd gestao-financeira-desktop
 npm install
 npm start
 ```
@@ -63,7 +63,7 @@ npm start
 ## Estrutura do projeto
 
 ```
-gestor-gastos/
+gestao-financeira-desktop/
 ├── assets/          # Ícones e recursos
 ├── renderer/        # Interface (HTML, CSS e JS)
 │   ├── index.html
